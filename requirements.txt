@@ -1,2 +1,5 @@
-requests
 flask
+requests
+gspread
+google-auth
+
