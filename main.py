@@ -1,4 +1,4 @@
- import os
+import os
 import json
 from flask import Flask, request
 import requests
@@ -22,7 +22,6 @@ def get_sheet():
     credentials = Credentials.from_service_account_info(creds_dict, scopes=scopes)
     gc = gspread.authorize(credentials)
     
-    # Názov tvojej Google tabuľky
     sheet_title = "Investicny Bot"
     spreadsheet = gc.open(sheet_title)
     return spreadsheet.sheet1
@@ -42,11 +41,8 @@ def webhook():
         reply_text = f"Prijaté: {text}"
         
         try:
-            # Pokus o zápis do Google Sheets
             sheet = get_sheet()
             current_time = datetime.now().strftime("%d.%m.%Y %H:%M")
-            
-            # Pridá riadok do tabuľky
             sheet.append_row([current_time, "Správa", text, "-"])
             reply_text += " ✅ (Zapísané do tabuľky!)"
         except Exception as e:
@@ -62,6 +58,5 @@ def webhook():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
-
 
 
