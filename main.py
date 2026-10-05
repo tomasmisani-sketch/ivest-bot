@@ -22,7 +22,8 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 # Hlavný model sa dá zmeniť cez premennú GEMINI_MODEL bez zásahu do kódu
 PRIMARY_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
-FALLBACK_MODELS = ["gemini-3.8-flash-lite"]
+# Voliteľné záložné modely oddelené čiarkou (over ich cez /modely)
+FALLBACK_MODELS = [m.strip() for m in os.getenv("GEMINI_FALLBACK_MODELS", "").split(",") if m.strip()]
 MODELS = [PRIMARY_MODEL] + [m for m in FALLBACK_MODELS if m != PRIMARY_MODEL]
 
 TELEGRAM_API_URL = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
@@ -116,7 +117,7 @@ def generate_analysis(prompt):
     if not ai_client:
         raise RuntimeError("Chýba GEMINI_API_KEY.")
 
-    last_error = None
+    first_error = None
     for model in MODELS:
         for grounding in (True, False):
             try:
@@ -133,9 +134,10 @@ def generate_analysis(prompt):
                     note = "" if grounding else "\n\n(ℹ️ Analýza bez vyhľadávania na webe.)"
                     return text + note
             except Exception as e:
-                last_error = e
+                if first_error is None:
+                    first_error = e  # hlásime prvú (skutočnú) chybu
                 print(f"Gemini chyba [{model}, grounding={grounding}]: {e}")
-    raise RuntimeError(last_error)
+    raise RuntimeError(first_error)
 
 
 def run_analysis(chat_id, symbol):
@@ -328,7 +330,17 @@ def webhook():
         chat_id = data["message"]["chat"]["id"]
         text = data["message"]["text"]
 
-        if text.startswith("/analytik"):
+        if text.startswith("/modely"):
+            try:
+                names = [
+                    m.name for m in ai_client.models.list()
+                    if "generateContent" in (m.supported_actions or [])
+                ]
+                send_telegram_msg(chat_id, "Dostupné modely:\n" + "\n".join(names), markdown=False)
+            except Exception as e:
+                send_telegram_msg(chat_id, f"❌ Chyba: {e}", markdown=False)
+
+        elif text.startswith("/analytik"):
             parts = text.split()
             symbol = parts[1].upper() if len(parts) > 1 else "GOLD"
             send_telegram_msg(chat_id, f"⏳ Analyzujem `{symbol}`, chvíľu strpenia...")
