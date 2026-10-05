@@ -21,7 +21,7 @@ GOOGLE_CREDENTIALS_RAW = os.getenv("GOOGLE_CREDENTIALS")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 # Hlavný model sa dá zmeniť cez premennú GEMINI_MODEL bez zásahu do kódu
-PRIMARY_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
+PRIMARY_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
 # Voliteľné záložné modely oddelené čiarkou (over ich cez /modely)
 FALLBACK_MODELS = [m.strip() for m in os.getenv("GEMINI_FALLBACK_MODELS", "").split(",") if m.strip()]
 MODELS = [PRIMARY_MODEL] + [m for m in FALLBACK_MODELS if m != PRIMARY_MODEL]
