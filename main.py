@@ -68,7 +68,7 @@ def get_market_data(symbol):
         df = ticker.history(period="60d", interval="1d")
         if df.empty:
             return None
-        
+
         df['EMA_200'] = df['Close'].ewm(span=200, adjust=False).mean()
         high_low = df['High'] - df['Low']
         high_close = (df['High'] - df['Close'].shift()).abs()
@@ -153,12 +153,12 @@ def daily_report_job():
     try:
         records = sheet.get_all_records()
         open_positions = [r for r in records if str(r.get("STATUS", "")).upper() == "OPEN"]
-        
+
         if not records:
             return
 
         chat_id = records[0].get("CHAT_ID")
-        
+
         report = "📋 *DENNÝ REPORT POZÍCIÍ*\n\n"
         if not open_positions:
             report += "Aktuálne nemáš otvorené žiadne pozície."
@@ -169,10 +169,10 @@ def daily_report_job():
                 dir_ = pos.get("DIRECTION")
                 entry = pos.get("ENTRY")
                 be_done = "🛡️ SL na BE" if str(pos.get("BE_DONE", "")).upper() == "TRUE" else "⚠️ Risk aktívny"
-                
+
                 m_info = get_market_data(sym)
                 curr = m_info["price"] if m_info else "N/A"
-                
+
                 report += f"• *{sym} {dir_}* | Vstup: `{entry}` | Aktuálne: `{curr}` | {be_done}\n"
 
         send_telegram_msg(chat_id, report)
@@ -181,15 +181,17 @@ def daily_report_job():
 
 # Plánovač
 scheduler = BackgroundScheduler()
-# Kontrola pozícií každých 10 minút
 scheduler.add_job(func=check_positions_job, trigger="interval", minutes=10)
-# Denný report každý deň o 20:00
 scheduler.add_job(func=daily_report_job, trigger="cron", hour=20, minute=0)
 scheduler.start()
 
 # ------------------------------------------------------------------
 # 3. WEBHOOK & HANDLERY
 # ------------------------------------------------------------------
+@app.route('/', methods=['GET', 'HEAD'])
+def index():
+    return "Bot beží úspešne!", 200
+
 @app.route('/health', methods=['GET'])
 def health():
     return jsonify({"status": "alive"}), 200
@@ -198,7 +200,10 @@ def health():
 def webhook():
     data = request.get_json()
 
-    # Tlačidlá
+    if not data:
+        return jsonify({"status": "error"}), 400
+
+    # Tlačidlá (Callback Query)
     if "callback_query" in data:
         cb = data["callback_query"]
         chat_id = cb["message"]["chat"]["id"]
@@ -207,7 +212,7 @@ def webhook():
         if cb_data.startswith("be_done_"):
             row_index = int(cb_data.split("_")[2])
             sheet.update_cell(row_index, 11, "TRUE") # 11. stĺpec = BE_DONE
-            
+
             requests.post(f"{TELEGRAM_API_URL}/answerCallbackQuery", json={"callback_query_id": cb["id"], "text": "Uložené!"})
             send_telegram_msg(chat_id, "✅ *Stav aktualizovaný:* Pozícia bola v Google Sheets označená ako BE = TRUE.")
 
@@ -222,7 +227,7 @@ def webhook():
         if text.startswith("/analytik"):
             parts = text.split()
             symbol = parts[1].upper() if len(parts) > 1 else "GOLD"
-            
+
             market_data = get_market_data(symbol)
             if not market_data:
                 send_telegram_msg(chat_id, f"❌ Nepodarilo sa stiahnuť dáta pre inštrument `{symbol}`.")
@@ -244,15 +249,15 @@ def webhook():
             )
 
             try:
-                # Použitie Google Search Grounding pre živé správy z webu
+                # Použitie Google Search Grounding v novom google-genai SDK
                 response = ai_client.models.generate_content(
                     model='gemini-3.7-flash',
                     contents=prompt,
                     config=types.GenerateContentConfig(
-                        tools=[{"google_search": {}}]
+                        tools=[types.Tool(google_search=types.GoogleSearch())]
                     )
                 )
-                
+
                 output_text = response.text if hasattr(response, 'text') else "Analýzu sa nepodarilo vygenerovať."
                 send_telegram_msg(chat_id, f"📊 *KOMPLEXNÁ ANALÝZA: {symbol}*\n\n{output_text}")
             except Exception as e:
