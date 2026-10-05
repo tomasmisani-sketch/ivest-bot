@@ -1,5 +1,10 @@
-flask
+Flask
 requests
 gspread
+pandas
+yfinance
+apscheduler
+google-genai
 google-auth
+gunicorn
 
