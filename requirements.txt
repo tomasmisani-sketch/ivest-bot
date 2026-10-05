@@ -7,4 +7,3 @@ apscheduler
 google-genai
 google-auth
 gunicorn
-
