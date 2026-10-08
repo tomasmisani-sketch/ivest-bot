@@ -5,6 +5,8 @@ import requests
 import gspread
 import pandas as pd
 import yfinance as yf
+from datetime import datetime
+from zoneinfo import ZoneInfo
 from flask import Flask, request, jsonify
 from apscheduler.schedulers.background import BackgroundScheduler
 from google import genai
@@ -19,6 +21,7 @@ app = Flask(__name__)
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 GOOGLE_CREDENTIALS_RAW = os.getenv("GOOGLE_CREDENTIALS")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+CRON_SECRET = os.getenv("CRON_SECRET")  # voliteľné, ochrana endpointu /cena
 
 # Hlavný model sa dá zmeniť cez premennú GEMINI_MODEL bez zásahu do kódu
 PRIMARY_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
@@ -47,6 +50,7 @@ SCOPES = [
 ]
 
 sheet = None
+gc = None
 try:
     creds_dict = json.loads(GOOGLE_CREDENTIALS_RAW)
     credentials = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
@@ -110,6 +114,31 @@ def get_market_data(symbol):
     except Exception as e:
         print(f"Chyba pri stiahnutí yfinance dát pre {symbol}: {e}")
         return None
+
+
+def get_tv_price(tv_symbol="TVC:GOLD"):
+    """Aktuálna cena z TradingView scanneru (neoficiálny endpoint)."""
+    r = requests.post(
+        "https://scanner.tradingview.com/global/scan",
+        json={"symbols": {"tickers": [tv_symbol]}, "columns": ["close"]},
+        timeout=15,
+    )
+    r.raise_for_status()
+    data = r.json().get("data") or []
+    if not data:
+        raise ValueError(f"TradingView nevrátil dáta pre {tv_symbol}")
+    return data[0]["d"][0]
+
+
+def get_price_sheet():
+    """Samostatný hárok 'Ceny', aby sa nepomiešal s pozíciami na sheet1."""
+    ss = gc.open("Investicny Bot")
+    try:
+        return ss.worksheet("Ceny")
+    except gspread.WorksheetNotFound:
+        ws = ss.add_worksheet(title="Ceny", rows=1000, cols=3)
+        ws.append_row(["DATETIME", "SYMBOL", "PRICE"])
+        return ws
 
 
 def generate_analysis(prompt):
@@ -274,7 +303,7 @@ scheduler.start()
 
 
 # ------------------------------------------------------------------
-# 4. WEBHOOK
+# 4. WEBHOOK & ENDPOINTY
 # ------------------------------------------------------------------
 @app.route("/", methods=["GET", "HEAD"])
 def index():
@@ -284,6 +313,27 @@ def index():
 @app.route("/health", methods=["GET"])
 def health():
     return jsonify({"status": "alive"}), 200
+
+
+@app.route("/cena", methods=["GET"])
+def cena():
+    """Stiahne cenu TVC:GOLD a zapíše ju do hárku 'Ceny'.
+    Test bez zápisu do tabuľky:  /cena?test=1
+    Ak je nastavený CRON_SECRET, pridaj &key=TVOJ_SECRET
+    """
+    if CRON_SECRET and request.args.get("key") != CRON_SECRET:
+        return jsonify({"status": "forbidden"}), 403
+    try:
+        price = get_tv_price("TVC:GOLD")
+        if request.args.get("test"):
+            return jsonify({"status": "ok", "mode": "test", "price": price}), 200
+
+        now = datetime.now(ZoneInfo("Europe/Bratislava")).strftime("%Y-%m-%d %H:%M")
+        get_price_sheet().append_row([now, "TVC:GOLD", price])
+        return jsonify({"status": "ok", "time": now, "price": price}), 200
+    except Exception as e:
+        print(f"Chyba /cena: {e}")
+        return jsonify({"status": "error", "detail": str(e)}), 500
 
 
 @app.route("/webhook", methods=["POST"])
@@ -339,6 +389,13 @@ def webhook():
                 send_telegram_msg(chat_id, "Dostupné modely:\n" + "\n".join(names), markdown=False)
             except Exception as e:
                 send_telegram_msg(chat_id, f"❌ Chyba: {e}", markdown=False)
+
+        elif text.startswith("/cena"):
+            try:
+                price = get_tv_price("TVC:GOLD")
+                send_telegram_msg(chat_id, f"🥇 TVC:GOLD: {price} USD", markdown=False)
+            except Exception as e:
+                send_telegram_msg(chat_id, f"❌ Chyba pri sťahovaní ceny: {e}", markdown=False)
 
         elif text.startswith("/analytik"):
             parts = text.split()
