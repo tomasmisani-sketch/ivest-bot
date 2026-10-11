@@ -241,6 +241,13 @@ def risk_in_eur(symbol, sl_dist, volume):
     raise ValueError("neznáma kótovacia mena")
 
 
+def to_float(v):
+    """Číslo z bunky aj pri slovenskom formáte (4194,6 alebo 4 194,6)."""
+    if isinstance(v, (int, float)) and not isinstance(v, bool):
+        return float(v)
+    return float(str(v).strip().replace("\u00a0", "").replace(" ", "").replace(",", "."))
+
+
 def find_row_by_id(pos_id):
     for i, v in enumerate(sheet.col_values(1), start=1):
         if i > 1 and str(v) == str(pos_id):
@@ -673,10 +680,14 @@ def check_positions_job():
 
             symbol = str(row.get("SYMBOL", ""))
             direction = str(row.get("DIRECTION", "")).upper()
-            entry_price = float(row.get("ENTRY", 0))
-            sl = float(row.get("SL", 0))
-            tp = float(row.get("TP", 0))
-            be_price = float(row.get("BE_PRICE", 0))
+            try:
+                entry_price = to_float(row.get("ENTRY"))
+                sl = to_float(row.get("SL"))
+                tp = to_float(row.get("TP"))
+                be_price = to_float(row.get("BE_PRICE"))
+            except (ValueError, TypeError):
+                print(f"Pozícia v riadku {index}: nečitateľné číslo (ENTRY/SL/TP/BE_PRICE), preskakujem.")
+                continue
             be_done = str(row.get("BE_DONE", "")).upper() == "TRUE"
             be_ignored = str(row.get("BE_DONE", "")).upper() == "IGNORED"
             chat_id = row.get("CHAT_ID")
