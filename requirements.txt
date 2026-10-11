@@ -3,7 +3,7 @@ requests
 gspread
 pandas
 yfinance
-apscheduler
+tzdata
 google-genai
 google-auth
 gunicorn
