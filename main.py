@@ -248,6 +248,16 @@ def to_float(v):
     return float(str(v).strip().replace("\u00a0", "").replace(" ", "").replace(",", "."))
 
 
+def get_positions():
+    """Riadky pozícií s presnými číslami. Bez UNFORMATTED_VALUE gspread pri slovenskom
+    formáte bunky číta '4194,6' ako 41946 (čiarku berie ako oddeľovač tisícov)."""
+    try:
+        return sheet.get_all_records(value_render_option="UNFORMATTED_VALUE")
+    except TypeError:
+        print("⚠️ Stará verzia gspread, čísla sa čítajú vo formáte bunky. Aktualizuj gspread.")
+        return sheet.get_all_records()
+
+
 def find_row_by_id(pos_id):
     for i, v in enumerate(sheet.col_values(1), start=1):
         if i > 1 and str(v) == str(pos_id):
@@ -673,7 +683,7 @@ def check_positions_job():
     if sheet is None:
         return
     try:
-        records = sheet.get_all_records()
+        records = get_positions()
         for index, row in enumerate(records, start=2):
             if str(row.get("STATUS", "")).upper() != "OPEN":
                 continue
@@ -759,7 +769,7 @@ def daily_report_job():
     if sheet is None:
         return
     try:
-        records = sheet.get_all_records()
+        records = get_positions()
         if not records:
             return
         open_positions = [r for r in records if str(r.get("STATUS", "")).upper() == "OPEN"]
@@ -964,7 +974,7 @@ def webhook():
         elif text.startswith("/pozicie"):
             try:
                 lines = []
-                for row in sheet.get_all_records():
+                for row in get_positions():
                     if str(row.get("STATUS", "")).upper() != "OPEN":
                         continue
                     pid = list(row.values())[0]
